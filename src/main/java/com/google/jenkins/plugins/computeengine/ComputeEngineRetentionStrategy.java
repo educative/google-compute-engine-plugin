@@ -80,9 +80,9 @@ public class ComputeEngineRetentionStrategy extends RetentionStrategy<ComputeEng
 
     @Override
     public void taskCompleted(Executor executor, Queue.Task task, long durationMS) {
-        if (wasPreempted(executor)) {
-            rescheduleTask(task);
-        }
+        // if (wasPreempted(executor)) {
+        //     rescheduleTask(task);
+        // }
         if (oneShot) {
             delegate.taskCompleted(executor, task, durationMS);
         }
@@ -90,9 +90,9 @@ public class ComputeEngineRetentionStrategy extends RetentionStrategy<ComputeEng
 
     @Override
     public void taskCompletedWithProblems(Executor executor, Queue.Task task, long durationMS, Throwable problems) {
-        if (wasPreempted(executor)) {
-            rescheduleTask(task);
-        }
+        // if (wasPreempted(executor)) {
+        //     rescheduleTask(task);
+        // }
         if (oneShot) {
             delegate.taskCompletedWithProblems(executor, task, durationMS, problems);
         }

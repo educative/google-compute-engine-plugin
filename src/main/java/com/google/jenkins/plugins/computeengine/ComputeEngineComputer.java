@@ -19,12 +19,14 @@ package com.google.jenkins.plugins.computeengine;
 import com.google.api.services.compute.model.Instance;
 import com.google.api.services.compute.model.Scheduling;
 import hudson.model.Executor;
+import hudson.model.Result;
 import hudson.model.TaskListener;
 import hudson.slaves.AbstractCloudComputer;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
+import jenkins.model.CauseOfInterruption;
 import lombok.extern.java.Log;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.HttpRedirect;
@@ -73,6 +75,12 @@ public class ComputeEngineComputer extends AbstractCloudComputer<ComputeEngineIn
     private void interruptExecutor(Executor executor, String nodeName) {
         log.log(Level.INFO, "Terminating executor " + executor + " node " + nodeName);
         executor.abortResult();
+        executor.interrupt(Result.FAILURE, new CauseOfInterruption() {
+            @Override
+            public String getShortDescription() {
+                return "Instance " + nodeName + " was preempted";
+            }
+        });
     }
 
     /**
