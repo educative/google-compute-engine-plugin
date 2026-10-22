@@ -19,12 +19,14 @@ package com.google.jenkins.plugins.computeengine;
 import com.google.api.services.compute.model.Instance;
 import com.google.api.services.compute.model.Scheduling;
 import hudson.model.Executor;
+import hudson.model.Job;
 import hudson.model.Queue;
 import hudson.model.Result;
 import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.slaves.AbstractCloudComputer;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.logging.Level;
@@ -94,15 +96,29 @@ public class ComputeEngineComputer extends AbstractCloudComputer<ComputeEngineIn
     }
 
     /**
-     * Admin opt-in, off by default: the {@value #PREEMPT_RETRY_JOBS_PROPERTY} system property holds a
-     * regex of job full names (e.g. {@code educative/PR-123}) whose builds are left for the pipeline to
-     * retry instead of being failed. Read on every preemption, so it can be set from the script console.
+     * Admin flag {@value #PREEMPT_RETRY_JOBS_PROPERTY}, read on every preemption so it can be changed
+     * from the script console without a restart:
+     * unset (default) - every preempted build is failed, as before;
+     * empty           - no preempted build is failed, the pipeline retries all of them;
+     * comma-separated job names (e.g. {@code PR-123,PR-456}) - only those builds are left to retry.
      */
     private static boolean isPreemptRetryEnabled(Executor executor) {
         String jobs = System.getProperty(PREEMPT_RETRY_JOBS_PROPERTY);
+        if (jobs == null) {
+            return false;
+        }
+        if (jobs.trim().isEmpty()) {
+            return true;
+        }
         Queue.Executable executable = executor.getCurrentExecutable();
         Queue.Executable run = executable == null ? null : executable.getParentExecutable();
-        return jobs != null && run instanceof Run && ((Run<?, ?>) run).getParent().getFullName().matches(jobs);
+        if (!(run instanceof Run)) {
+            return false;
+        }
+        Job<?, ?> job = ((Run<?, ?>) run).getParent();
+        return Arrays.stream(jobs.split(","))
+                .map(String::trim)
+                .anyMatch(name -> name.equals(job.getName()) || name.equals(job.getFullName()));
     }
 
     /**
