@@ -19,7 +19,9 @@ package com.google.jenkins.plugins.computeengine;
 import com.google.api.services.compute.model.Instance;
 import com.google.api.services.compute.model.Scheduling;
 import hudson.model.Executor;
+import hudson.model.Queue;
 import hudson.model.Result;
+import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.slaves.AbstractCloudComputer;
 import java.io.IOException;
@@ -34,6 +36,8 @@ import org.kohsuke.stapler.HttpResponse;
 
 @Log
 public class ComputeEngineComputer extends AbstractCloudComputer<ComputeEngineInstance> {
+
+    static final String PREEMPT_RETRY_JOBS_PROPERTY = "gce.preemptRetryJobs";
 
     private volatile Instance instance;
     private CompletableFuture<Boolean> preemptedFuture;
@@ -75,12 +79,30 @@ public class ComputeEngineComputer extends AbstractCloudComputer<ComputeEngineIn
     private void interruptExecutor(Executor executor, String nodeName) {
         log.log(Level.INFO, "Terminating executor " + executor + " node " + nodeName);
         executor.abortResult();
+        if (isPreemptRetryEnabled(executor)) {
+            // The closed channel fails the node body with an agent error, which the pipeline's
+            // retry(conditions: [agent()]) reruns on a fresh agent in the same build.
+            log.log(Level.INFO, "Not failing the build on " + nodeName + ": preempt retry is enabled for it");
+            return;
+        }
         executor.interrupt(Result.FAILURE, new CauseOfInterruption() {
             @Override
             public String getShortDescription() {
                 return "Instance " + nodeName + " was preempted";
             }
         });
+    }
+
+    /**
+     * Admin opt-in, off by default: the {@value #PREEMPT_RETRY_JOBS_PROPERTY} system property holds a
+     * regex of job full names (e.g. {@code educative/PR-123}) whose builds are left for the pipeline to
+     * retry instead of being failed. Read on every preemption, so it can be set from the script console.
+     */
+    private static boolean isPreemptRetryEnabled(Executor executor) {
+        String jobs = System.getProperty(PREEMPT_RETRY_JOBS_PROPERTY);
+        Queue.Executable executable = executor.getCurrentExecutable();
+        Queue.Executable run = executable == null ? null : executable.getParentExecutable();
+        return jobs != null && run instanceof Run && ((Run<?, ?>) run).getParent().getFullName().matches(jobs);
     }
 
     /**
