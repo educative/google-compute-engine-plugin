@@ -153,9 +153,22 @@ public abstract class ComputeEngineComputerLauncher extends ComputerLauncher {
                 opError = e.getError();
             }
             if (opError != null) {
+                String code = opError.getErrors().get(0).getCode();
+                String message = opError.getErrors().get(0).getMessage();
                 LOGGER.info(String.format(
                         "Launch failed while waiting for operation %s to complete. Operation error was %s",
-                        insertOperationId, opError.getErrors().get(0).getMessage()));
+                        insertOperationId, message));
+                // A cancelled create is an aborted build or deleted agent, not GCP refusing the VM.
+                if (!"OPERATION_CANCELED_BY_USER".equals(code)) {
+                    CloudFailureTracker.markFailed(cloud.name, code + ": " + message);
+                }
+                // GCP created no VM. Drop the agent so Jenkins sees the waiting build still needs
+                // one and provisions again, from another cloud while this one cools down.
+                try {
+                    Jenkins.get().removeNode(node);
+                } catch (IOException e) {
+                    LOGGER.log(Level.WARNING, "Could not remove agent " + node.getNodeName(), e);
+                }
                 return;
             }
         } catch (InterruptedException e) {

@@ -24,7 +24,7 @@ import hudson.slaves.CloudProvisioningListener;
 import hudson.slaves.NodeProvisioner;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -62,8 +62,11 @@ public class NoDelayProvisionerStrategy extends NodeProvisioner.Strategy {
                 Level.FINE, "Available capacity={0}, currentDemand={1}", new Object[] {availableCapacity, currentDemand
                 });
         if (availableCapacity < currentDemand) {
+            // Clouds in their configured order (keep the cheapest first). Clouds whose VM GCP recently
+            // rejected go last, so they're only used when no other cloud can take the build.
+            // List.sort is stable, so the configured order holds within each group.
             List<Cloud> jenkinsClouds = new ArrayList<>(Jenkins.get().clouds);
-            Collections.shuffle(jenkinsClouds);
+            jenkinsClouds.sort(Comparator.comparing(c -> CloudFailureTracker.isCoolingDown(c.name)));
             for (Cloud cloud : jenkinsClouds) {
                 int workloadToProvision = currentDemand - availableCapacity;
                 if (!(cloud instanceof ComputeEngineCloud)) continue;
@@ -83,7 +86,10 @@ public class NoDelayProvisionerStrategy extends NodeProvisioner.Strategy {
                 LOGGER.log(Level.FINE, "After provisioning, available capacity={0}, currentDemand={1}", new Object[] {
                     availableCapacity, currentDemand
                 });
-                break;
+                if (!plannedNodes.isEmpty()) {
+                    break;
+                }
+                // Nothing planned (cloud at its cap, or GCP refused the create): try the next cloud now.
             }
         }
         if (availableCapacity >= currentDemand) {
