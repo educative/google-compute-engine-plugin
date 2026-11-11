@@ -267,6 +267,8 @@ public class ComputeEngineCloud extends AbstractCloudImpl {
             }
         } catch (IOException ioe) {
             log.log(Level.WARNING, "Error provisioning node", ioe);
+            // GCP refused the create outright (quota, invalid config, ...): try other clouds first.
+            CloudFailureTracker.markFailed(name, ioe.getMessage());
         } catch (NoConfigurationException nce) {
             log.log(
                     Level.WARNING,
